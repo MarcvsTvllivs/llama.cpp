@@ -586,6 +586,23 @@ cmake -B build -DGGML_VULKAN=1 -DGGML_METAL=OFF
 cmake --build build --config Release
 ```
 
+### Intel iGPUs on Linux (i915 kernel driver)
+
+On Intel integrated GPUs driven by the i915 kernel driver, the kernel cancels any queued GPU
+request that has not completed within `i915.request_timeout_ms` (20 seconds by default). The
+cancellation is invisible to Vulkan: the fence signals success, no `VK_ERROR_DEVICE_LOST` is
+raised, and the kernel scrubs the hardware context, so the process keeps returning wrong results
+until it is restarted. The kernel logs `Fence expiration time out i915-...` when this happens.
+Long prompt processing on slow iGPUs can exceed the limit because all submissions of a compute
+graph are queued before any of them is waited on.
+
+The backend therefore serializes submissions by default on Intel integrated GPUs with the Mesa
+driver, which keeps a single submission in flight. Set `GGML_VK_SERIALIZE_SUBMISSIONS=0` to
+restore pipelined submissions, or `GGML_VK_SERIALIZE_SUBMISSIONS=1` to force serialization on any
+device. Alternatively, raise or disable the kernel limit, for example
+`echo 300000 | sudo tee /sys/module/i915/parameters/request_timeout_ms` (applies to processes
+started afterwards).
+
 ## CANN
 This provides NPU acceleration using the AI cores of your Ascend NPU. And [CANN](https://www.hiascend.com/en/software/cann) is a hierarchical APIs to help you to quickly build AI applications and service based on Ascend NPU.
 
