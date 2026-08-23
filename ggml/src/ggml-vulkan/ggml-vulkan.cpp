@@ -4925,7 +4925,21 @@ vk_device ggml_vk_get_device(size_t idx) {
 
         device->idx = idx;
 
-        device->serialize_submissions = getenv("GGML_VK_SERIALIZE_SUBMISSIONS") != nullptr;
+        // Serialize submissions by default on Intel integrated GPUs with the Mesa
+        // driver. The i915 kernel driver cancels any queued request that has not
+        // completed within i915.request_timeout_ms (20 s by default) and the
+        // cancellation is invisible to the application: the fence signals success,
+        // no VK_ERROR_DEVICE_LOST is raised, and the scrubbed context keeps
+        // returning wrong results until the process restarts. Keeping one
+        // submission in flight bounds the age of every queued request.
+        // See https://github.com/ggml-org/ggml/issues/1565.
+        {
+            const bool serialize_default = device->uma &&
+                                           device->driver_id == vk::DriverId::eIntelOpenSourceMESA;
+            const char * serialize_env = getenv("GGML_VK_SERIALIZE_SUBMISSIONS");
+            device->serialize_submissions = serialize_env != nullptr ? serialize_env[0] != '0'
+                                                                     : serialize_default;
+        }
 
         device->disable_fusion = getenv("GGML_VK_DISABLE_FUSION") != nullptr;
 
